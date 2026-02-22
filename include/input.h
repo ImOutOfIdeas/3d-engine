@@ -1,26 +1,30 @@
 #ifndef INPUT_H
 #define INPUT_H
 
-#include <stdint.h>
+#include "types.h"
 #include <stdbool.h>
-
-typedef enum {
-    MOVE_FORWARD = 1 << 0,
-    MOVE_BACK    = 1 << 1,
-    MOVE_LEFT    = 1 << 2,
-    MOVE_RIGHT   = 1 << 3,
-} MoveFlags;
+#include "sokol_app.h"
 
 typedef struct {
-    uint32_t move;
-    bool     mouse_locked;
+    // Bitmask of currently held movement keys
+    MoveFlags move;
+
+    // Accumulated mouse delta for this frame (cleared by input_end_frame)
+    float mouse_dx;
+    float mouse_dy;
+
+    // Whether the mouse is currently locked (click to lock, Escape to unlock)
+    bool mouse_locked;
 } InputState;
 
-// These are called from main.c's sokol event handler
-// key_code matches sokol's sapp_keycode values
-void input_key_down(InputState *input, int key_code);
-void input_key_up(InputState *input, int key_code);
-void input_mouse_down(InputState *input);
+// Call from sokol's event handler
+void input_key_down   (InputState *input, sapp_keycode key);
+void input_key_up     (InputState *input, sapp_keycode key);
+void input_mouse_move(InputState *input, float dx, float dy);
+void input_mouse_lock (InputState *input);
 void input_mouse_unlock(InputState *input);
+
+// Call at the END of each frame to clear per-frame deltas
+void input_end_frame(InputState *input);
 
 #endif // INPUT_H

@@ -1,8 +1,10 @@
+#include "camera.h"
+#include "input.h"
+#include "HandmadeMath.h"
+
 #define SOKOL_IMPL
 #define SOKOL_GLCORE
 #define STB_IMAGE_IMPLEMENTATION
-
-#include "HandmadeMath.h"
 #include "sokol_app.h"
 #include "sokol_gfx.h"
 #include "sokol_log.h"
@@ -10,8 +12,6 @@
 #include "stb_image.h"
 #include "pyramid.glsl.h"
 
-#include "camera.h"
-#include "input.h"
 
 #include <string.h>
 
@@ -105,25 +105,27 @@ static void init(void) {
         .depth     = { .load_action = SG_LOADACTION_CLEAR, .clear_value = 1.0f },
     };
 
-    state.camera.position = HMM_V3(0.0f, 1.0f, 3.0f);
-    state.camera.yaw      = HMM_PI;
-    state.camera.pitch    = 0.0f;
+    camera_init(&state.camera, HMM_V3(0.0f, 1.0f, 3.0f), HMM_PI);
 }
 
 static void frame(void) {
-    float dt = (float)sapp_frame_duration();
+    float dt     = (float)sapp_frame_duration();
+    float aspect = (float)sapp_width() / (float)sapp_height();
 
+    // Update
     camera_move(&state.camera, state.input.move, dt);
+    camera_look(&state.camera, state.input.mouse_dx, state.input.mouse_dy);
 
-    float    aspect     = (float)sapp_width() / (float)sapp_height();
-    HMM_Mat4 projection = HMM_Perspective_RH_NO(FOV, aspect, 0.1f, 100.0f);
-    HMM_Mat4 view       = camera_view(&state.camera);
-    HMM_Mat4 model      = HMM_M4D(1.0f);
-    HMM_Mat4 mvp        = HMM_MulM4(HMM_MulM4(projection, view), model);
+    // Build MVP — model is identity for now
+    HMM_Mat4 proj  = camera_projection(&state.camera, aspect);
+    HMM_Mat4 view  = camera_view(&state.camera);
+    HMM_Mat4 model = HMM_M4D(1.0f);
+    HMM_Mat4 mvp   = HMM_MulM4(HMM_MulM4(proj, view), model);
 
     vs_params_t vs_params;
     memcpy(vs_params.mvp, mvp.Elements, sizeof(vs_params.mvp));
 
+    // Draw
     sg_begin_pass(&(sg_pass){ .action = state.pass_action, .swapchain = sglue_swapchain() });
     sg_apply_pipeline(state.pip);
     sg_apply_bindings(&state.bind);
@@ -131,10 +133,12 @@ static void frame(void) {
     sg_draw(0, 12, 1);
     sg_end_pass();
     sg_commit();
+
+    // Must be last — clears per-frame mouse delta
+    input_end_frame(&state.input);
 }
 
-// main.c is the only place that knows about sokol events.
-// It translates them into calls to engine modules.
+// translates sokol_events into calls to engine modules.
 static void event(const sapp_event *e) {
     switch (e->type) {
         case SAPP_EVENTTYPE_KEY_DOWN:
@@ -149,11 +153,11 @@ static void event(const sapp_event *e) {
             break;
         case SAPP_EVENTTYPE_MOUSE_DOWN:
             sapp_lock_mouse(true);
-            input_mouse_down(&state.input);
+            input_mouse_lock(&state.input);
             break;
         case SAPP_EVENTTYPE_MOUSE_MOVE:
             if (state.input.mouse_locked)
-                camera_look(&state.camera, e->mouse_dx, e->mouse_dy);
+                input_mouse_move(&state.input, e->mouse_dx, e->mouse_dy);
             break;
         default: break;
     }
